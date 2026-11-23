@@ -1,8 +1,10 @@
 import {
   Action,
   ActionPanel,
+  Clipboard,
   closeMainWindow,
   Color,
+  getFrontmostApplication,
   getPreferenceValues,
   Icon,
   List,
@@ -11,8 +13,17 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
+import { setTimeout as delay } from "node:timers/promises";
 import { useEffect, useMemo, useState } from "react";
-import { type Bookmark, type BrowserItemKind, BrowserDataAccessError, loadBrowserBookmarks, openInNewWindow } from "./browser";
+import {
+  type Bookmark,
+  type BrowserItemKind,
+  BrowserDataAccessError,
+  defaultBrowser,
+  loadBrowserBookmarks,
+  openInNewWindow,
+  openNewTabWindow,
+} from "./browser";
 import { findFzf, searchBookmarks } from "./fzf";
 
 type Catalog = Awaited<ReturnType<typeof loadBrowserBookmarks>> & { fzf: string };
@@ -102,6 +113,40 @@ export default function Command() {
     }
   }
 
+  async function fillAddressBar() {
+    try {
+      const browser = catalog?.browser ?? await defaultBrowser(AbortSignal.timeout(5000));
+      await closeMainWindow();
+      await openNewTabWindow(browser.executable);
+      if (!query) return;
+
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if ((await getFrontmostApplication()).bundleId === browser.bundleId) {
+          await Clipboard.paste(query);
+          return;
+        }
+        await delay(50);
+      }
+      throw new Error(`${browser.name} did not come to the foreground.`);
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Couldn’t Fill the Browser Address Bar",
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  const addressBarAction = <Action title="Fill Address Bar in New Window" icon={Icon.Window} onAction={fillAddressBar} />;
+  const filesSettings = (
+    <Action
+      title="Open Files & Folders Settings"
+      icon={Icon.Gear}
+      onAction={() => open("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")}
+    />
+  );
+
   const emptyTitle = accessBlocked
     ? "Browser Data Access Blocked"
     : error
@@ -136,14 +181,9 @@ export default function Command() {
         description={error}
         actions={
           <ActionPanel>
-            {accessBlocked && (
-              <Action
-                title="Open Files & Folders Settings"
-                icon={Icon.Gear}
-                onAction={() => open("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")}
-              />
-            )}
-            {reload}
+            {accessBlocked ? filesSettings : reload}
+            {addressBarAction}
+            {accessBlocked && reload}
             {settings}
           </ActionPanel>
         }
@@ -162,6 +202,7 @@ export default function Command() {
                 icon={Icon.Window}
                 onAction={() => openBookmark(current.catalog.browser.executable, item)}
               />
+              {addressBarAction}
               <Action.CopyToClipboard title="Copy URL" content={item.url} />
               {reload}
               {settings}
