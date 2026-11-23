@@ -24,7 +24,7 @@ export async function defaultBrowser(signal: AbortSignal) {
   const [id, executable] = JSON.parse(stdout) as [string | null, string | null];
   const browser = id && Object.hasOwn(browsers, id) ? browsers[id as keyof typeof browsers] : undefined;
   if (!browser || !executable) throw new Error("Set Brave or Google Chrome as the macOS default browser.");
-  return { ...browser, bundleId: id, executable };
+  return { ...browser, executable };
 }
 
 export type BrowserItemKind = "bookmark" | "reading-list";
@@ -157,8 +157,13 @@ export function openInNewWindow(executable: string, { profile, url }: Bookmark) 
   return launchWindow(executable, [`--profile-directory=${profile}`, "--", url]);
 }
 
-export function openNewTabWindow(executable: string) {
-  return launchWindow(executable, ["--", "chrome://newtab/"]);
+export function openSearchWindow(executable: string, query: string) {
+  const text = query.trim();
+  if (!text) return launchWindow(executable, ["--", "chrome://newtab/"]);
+
+  const url = new URL("https://www.google.com/search");
+  url.searchParams.set("q", text);
+  return launchWindow(executable, ["--", url.href]);
 }
 
 function launchWindow(executable: string, args: string[]) {

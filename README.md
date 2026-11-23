@@ -4,7 +4,7 @@ Run **Search Browser Bookmarks** in Raycast. The command uses the macOS default 
 
 Install [fzf](https://github.com/junegunn/fzf) via Homebrew, Nix, or another installation on your PATH. You can also set **FZF Executable** in the extension settings.
 
-Press **⌘Enter** to open a new window in the default browser and put the current search text in its address bar. The text stays ready to edit or submit, even when there are no search matches.
+Press **⌘Enter** to search Google for the current input in a new window of the default browser. With no input, **⌘Enter** opens a new window on the browser’s New Tab page. This shortcut also works when there are no bookmark or Reading List matches.
 
 If macOS blocks browser data access, choose **Open Files & Folders Settings** from the error screen. Expand **Raycast** under **System Settings → Privacy & Security → Files & Folders** and enable access to Brave Browser or Google Chrome. Return to the command and use **Reload**.
 

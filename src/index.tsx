@@ -1,10 +1,8 @@
 import {
   Action,
   ActionPanel,
-  Clipboard,
   closeMainWindow,
   Color,
-  getFrontmostApplication,
   getPreferenceValues,
   Icon,
   List,
@@ -13,7 +11,6 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
-import { setTimeout as delay } from "node:timers/promises";
 import { useEffect, useMemo, useState } from "react";
 import {
   type Bookmark,
@@ -22,7 +19,7 @@ import {
   defaultBrowser,
   loadBrowserBookmarks,
   openInNewWindow,
-  openNewTabWindow,
+  openSearchWindow,
 } from "./browser";
 import { findFzf, searchBookmarks } from "./fzf";
 
@@ -113,32 +110,27 @@ export default function Command() {
     }
   }
 
-  async function fillAddressBar() {
+  async function openGoogleSearch() {
     try {
       const browser = catalog?.browser ?? await defaultBrowser(AbortSignal.timeout(5000));
+      await openSearchWindow(browser.executable, query);
       await closeMainWindow();
-      await openNewTabWindow(browser.executable);
-      if (!query) return;
-
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline) {
-        if ((await getFrontmostApplication()).bundleId === browser.bundleId) {
-          await Clipboard.paste(query);
-          return;
-        }
-        await delay(50);
-      }
-      throw new Error(`${browser.name} did not come to the foreground.`);
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
-        title: "Couldn’t Fill the Browser Address Bar",
+        title: "Couldn’t Open Browser Window",
         message: (error as Error).message,
       });
     }
   }
 
-  const addressBarAction = <Action title="Fill Address Bar in New Window" icon={Icon.Window} onAction={fillAddressBar} />;
+  const searchAction = (
+    <Action
+      title={query.trim() ? "Search Google in New Window" : "Open Empty Browser Window"}
+      icon={query.trim() ? Icon.MagnifyingGlass : Icon.Window}
+      onAction={openGoogleSearch}
+    />
+  );
   const filesSettings = (
     <Action
       title="Open Files & Folders Settings"
@@ -182,7 +174,7 @@ export default function Command() {
         actions={
           <ActionPanel>
             {accessBlocked ? filesSettings : reload}
-            {addressBarAction}
+            {searchAction}
             {accessBlocked && reload}
             {settings}
           </ActionPanel>
@@ -202,7 +194,7 @@ export default function Command() {
                 icon={Icon.Window}
                 onAction={() => openBookmark(current.catalog.browser.executable, item)}
               />
-              {addressBarAction}
+              {searchAction}
               <Action.CopyToClipboard title="Copy URL" content={item.url} />
               {reload}
               {settings}
