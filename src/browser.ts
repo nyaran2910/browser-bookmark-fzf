@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { readProfileReadingList } from "./reading-list.ts";
 
 const run = promisify(execFile);
 const detectBrowser = `
@@ -26,12 +27,16 @@ export async function defaultBrowser(signal: AbortSignal) {
   return { ...browser, executable };
 }
 
+export type BrowserItemKind = "bookmark" | "reading-list";
+
 export interface Bookmark {
+  kind: BrowserItemKind;
   title: string;
   url: string;
   folder: string;
   profile: string;
   profileName: string;
+  read?: boolean;
 }
 
 interface BookmarkNode {
@@ -43,7 +48,7 @@ interface BookmarkNode {
 
 export class BrowserDataAccessError extends Error {
   constructor(cause: unknown) {
-    super("Under Files & Folders → Raycast, enable access for your default browser. Then use Reload Bookmarks.", { cause });
+    super("Under Files & Folders → Raycast, enable access for your default browser. Then use Reload.", { cause });
     this.name = "BrowserDataAccessError";
   }
 }
@@ -60,7 +65,14 @@ function collectBookmarks(
       const path = [folder, node.name].filter(Boolean).join(" / ");
       collectBookmarks(node.children, path, profile, profileName, results);
     } else if (node.type === "url" && node.url && /^https?:\/\//i.test(node.url)) {
-      results.push({ title: node.name?.trim() || node.url, url: node.url, folder, profile, profileName });
+      results.push({
+        kind: "bookmark",
+        title: node.name?.trim() || node.url,
+        url: node.url,
+        folder,
+        profile,
+        profileName,
+      });
     }
   }
 }
@@ -77,27 +89,53 @@ export async function readBookmarks(root: string, signal: AbortSignal) {
   try {
     const entries = await readdir(root, { withFileTypes: true });
     const state = await readOptional(join(root, "Local State"), signal);
-    const profiles = state ? (JSON.parse(state) as {
-      profile?: { info_cache?: Record<string, { name?: string }>; last_used?: string };
-    }).profile : undefined;
+    const profiles = state
+      ? (
+          JSON.parse(state) as {
+            profile?: { info_cache?: Record<string, { name?: string }>; last_used?: string };
+          }
+        ).profile
+      : undefined;
     const names = profiles?.info_cache ?? {};
     const folders = entries
-      .filter((entry) =>
-        entry.isDirectory() && (/^(Default|Profile \d+)$/.test(entry.name) || Object.hasOwn(names, entry.name)),
+      .filter(
+        (entry) =>
+          entry.isDirectory() && (/^(Default|Profile \d+)$/.test(entry.name) || Object.hasOwn(names, entry.name)),
       )
       .map(({ name }) => name)
-      .sort((a, b) => a === profiles?.last_used ? -1 : b === profiles?.last_used ? 1 : a.localeCompare(b, undefined, { numeric: true }));
+      .sort((a, b) =>
+        a === profiles?.last_used ? -1 : b === profiles?.last_used ? 1 : a.localeCompare(b, undefined, { numeric: true }),
+      );
     const results: Bookmark[] = [];
 
     for (const profile of folders) {
+      const profileDir = join(root, profile);
+      const profileName = names[profile]?.name || profile;
+
       for (const file of ["Bookmarks", "AccountBookmarks"]) {
-        const json = await readOptional(join(root, profile, file), signal);
+        const json = await readOptional(join(profileDir, file), signal);
         if (json === undefined) continue;
         const data = JSON.parse(json) as { roots?: Record<string, BookmarkNode> };
-        collectBookmarks(Object.values(data.roots ?? {}), "", profile, names[profile]?.name || profile, results);
+        collectBookmarks(Object.values(data.roots ?? {}), "", profile, profileName, results);
+      }
+
+      const readingList = await readProfileReadingList(profileDir, signal);
+      for (const item of readingList) {
+        results.push({
+          kind: "reading-list",
+          title: item.title,
+          url: item.url,
+          folder: "Reading List",
+          profile,
+          profileName,
+          read: item.read,
+        });
       }
     }
-    const unique = new Map(results.map((item) => [JSON.stringify([item.profile, item.folder, item.title, item.url]), item]));
+
+    const unique = new Map(
+      results.map((item) => [JSON.stringify([item.kind, item.profile, item.folder, item.title, item.url]), item]),
+    );
     return [...unique.values()];
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;

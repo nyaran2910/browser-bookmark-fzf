@@ -35,9 +35,11 @@ export async function findFzf(preference?: string) {
 
 export function searchBookmarks(bookmarks: Bookmark[], query: string, executable: string, signal: AbortSignal) {
   if (!query.trim() || !bookmarks.length) return Promise.resolve(bookmarks.slice(0, resultLimit));
-  const rows = bookmarks.map(({ title, folder, url, profileName }, i) =>
-    `${i}\t${[title, url, folder, profileName].join(" ").replace(/[\0\t\r\n]/g, " ")}\0`,
-  );
+  const rows = bookmarks.map(({ kind, title, folder, url, profileName, read }, i) => {
+    const status = kind === "reading-list" ? (read ? "read" : "unread") : "";
+    const fields = [title, url, folder, status, profileName].filter(Boolean);
+    return `${i}\t${fields.join(" ").replace(/[\0\t\r\n]/g, " ")}\0`;
+  });
   const env = { ...process.env };
   delete env.FZF_DEFAULT_OPTS;
   delete env.FZF_DEFAULT_OPTS_FILE;

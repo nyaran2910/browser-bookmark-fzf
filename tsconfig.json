@@ -10,7 +10,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
-  "include": ["src/**/*", "raycast-env.d.ts"]
+  "include": ["src/**/*", "raycast-env.d.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }
