@@ -41,6 +41,13 @@ interface BookmarkNode {
   children?: BookmarkNode[];
 }
 
+export class BrowserDataAccessError extends Error {
+  constructor(cause: unknown) {
+    super("Under Files & Folders → Raycast, enable access for your default browser. Then use Reload Bookmarks.", { cause });
+    this.name = "BrowserDataAccessError";
+  }
+}
+
 function collectBookmarks(
   nodes: BookmarkNode[],
   folder: string,
@@ -95,7 +102,7 @@ export async function readBookmarks(root: string, signal: AbortSignal) {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "EPERM" || code === "EACCES") {
-      throw new Error("macOS blocked browser data access. Allow Raycast to access it and use Reload Bookmarks.");
+      throw new BrowserDataAccessError(error);
     }
     if (code === "ENOENT") return [];
     throw error;

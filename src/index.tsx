@@ -1,8 +1,8 @@
 import {
-  Action, ActionPanel, closeMainWindow, getPreferenceValues, Icon, List, openExtensionPreferences, showToast, Toast,
+  Action, ActionPanel, closeMainWindow, getPreferenceValues, Icon, List, open, openExtensionPreferences, showToast, Toast,
 } from "@raycast/api";
 import { useEffect, useState } from "react";
-import { type Bookmark, loadBrowserBookmarks, openInNewWindow } from "./browser";
+import { type Bookmark, BrowserDataAccessError, loadBrowserBookmarks, openInNewWindow } from "./browser";
 import { findFzf, searchBookmarks } from "./fzf";
 
 type Catalog = Awaited<ReturnType<typeof loadBrowserBookmarks>> & { fzf: string };
@@ -11,7 +11,7 @@ export default function Command() {
   const { fzfPath } = getPreferenceValues<{ fzfPath?: string }>();
   const [query, setQuery] = useState("");
   const [revision, setRevision] = useState(0);
-  const [source, setSource] = useState<{ catalog?: Catalog; error?: string }>({});
+  const [source, setSource] = useState<{ catalog?: Catalog; error?: Error }>({});
   const [result, setResult] = useState<{ catalog: Catalog; query: string; matches: Bookmark[]; error?: string }>();
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export default function Command() {
     setSource({});
     void Promise.all([loadBrowserBookmarks(signal), findFzf(fzfPath)]).then(
       ([catalog, fzf]) => { if (!signal.aborted) setSource({ catalog: { ...catalog, fzf } }); },
-      (error: Error) => { if (!signal.aborted) setSource({ error: error.message }); },
+      (error: Error) => { if (!signal.aborted) setSource({ error }); },
     );
     return () => controller.abort();
   }, [fzfPath, revision]);
@@ -38,7 +38,8 @@ export default function Command() {
   }, [catalog, query]);
 
   const current = result?.catalog === catalog && result?.query === query ? result : undefined;
-  const error = source.error ?? current?.error;
+  const error = source.error?.message ?? current?.error;
+  const accessBlocked = source.error instanceof BrowserDataAccessError;
   const loading = !error && !current;
   const reload = <Action title="Reload Bookmarks" icon={Icon.ArrowClockwise} onAction={() => setRevision((value) => value + 1)} />;
   const settings = <Action title="Open Extension Settings" icon={Icon.Gear} onAction={openExtensionPreferences} />;
@@ -61,9 +62,19 @@ export default function Command() {
       searchBarPlaceholder="Search bookmark titles, URLs, and folders with fzf…"
     >
       <List.EmptyView
-        title={error ? "Search Unavailable" : loading ? "Searching…" : query.trim() ? "No Matches" : "No Bookmarks"}
+        title={accessBlocked ? "Browser Data Access Blocked" : error ? "Search Unavailable" : loading ? "Searching…" : query.trim() ? "No Matches" : "No Bookmarks"}
         description={error}
-        actions={<ActionPanel>{reload}{settings}</ActionPanel>}
+        actions={(
+          <ActionPanel>
+            {accessBlocked && <Action
+              title="Open Files & Folders Settings"
+              icon={Icon.Gear}
+              onAction={() => open("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")}
+            />}
+            {reload}
+            {settings}
+          </ActionPanel>
+        )}
       />
       {current?.matches.map((bookmark) => (
         <List.Item
